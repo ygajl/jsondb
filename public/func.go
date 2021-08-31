@@ -3,6 +3,7 @@ package public
 import (
 	"encoding/json"
 	"strconv"
+	"strings"
 )
 
 func I2S(value interface{}) string {
@@ -51,12 +52,18 @@ func I2S(value interface{}) string {
 		key = strconv.FormatUint(it, 10)
 	case string:
 		key = value.(string)
+		//s := string(value.([]byte))
+		//key = strings.Replace(s, `'`, `\'`, -1)
 		key = `'` + key + `'`
 	case []byte:
-		key = `'` + string(value.([]byte)) + `'`
+		s := string(value.([]byte))
+		s = strings.Replace(s, `'`, `''`, -1)
+		key = `'` + s + `'`
 	default:
 		newValue, _ := json.Marshal(value)
-		key = `'` + string(newValue) + `'`
+		s := string(newValue)
+		s = strings.Replace(s, `'`, `''`, -1)
+		key = `'` + s + `'`
 	}
 
 	return key
