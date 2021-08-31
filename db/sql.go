@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -32,6 +33,7 @@ func Connect(strDsn string) error {
 }
 
 func QueryOne(strRawSql string, sli []interface{}) ([]interface{}, error) {
+	strRawSql = strings.Replace(strRawSql, `'`, `\'`, -1)
 	log.Println("sql:", strRawSql)
 	row := pg.QueryRow(strRawSql)
 	if row.Err() != nil {
@@ -60,6 +62,7 @@ func QueryOne(strRawSql string, sli []interface{}) ([]interface{}, error) {
 }
 
 func Query(strRawSql string, sli []interface{}) ([]interface{}, error) {
+	strRawSql = strings.Replace(strRawSql, `'`, `\'`, -1)
 	log.Println("sql:", strRawSql)
 	var sliOut []interface{}
 	rows, err := pg.Query(strRawSql)
