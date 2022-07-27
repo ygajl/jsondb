@@ -51,10 +51,9 @@ func I2S(value interface{}) string {
 		it := value.(uint64)
 		key = strconv.FormatUint(it, 10)
 	case string:
-		key = value.(string)
-		//s := string(value.([]byte))
-		//key = strings.Replace(s, `'`, `\'`, -1)
-		key = `'` + key + `'`
+		s := value.(string)
+		s = strings.Replace(s, `'`, `''`, -1)
+		key = `'` + s + `'`
 	case []byte:
 		s := string(value.([]byte))
 		s = strings.Replace(s, `'`, `''`, -1)
