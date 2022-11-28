@@ -147,7 +147,11 @@ func (t *TagArray) GenerateRawSql() (string, error) {
 	strSql := "select " + t.tObj.strColumnsSql + " from " + t.tObj.strTableNameSql + t.strWhere + t.strOrder
 
 	if t.wCount != 0 {
-		strSql += " limit " + strconv.Itoa(int(t.wCount))
+		if t.wPage != 0 {
+			strSql += " limit " + strconv.Itoa(int(t.wCount)) + " offset " + strconv.Itoa(int(t.wPage*t.wCount))
+		} else {
+			strSql += " limit " + strconv.Itoa(int(t.wCount))
+		}
 	}
 	return strSql, nil
 }
