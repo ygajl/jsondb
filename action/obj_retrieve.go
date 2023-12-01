@@ -67,9 +67,6 @@ func (t *TagObjReieve) ExecRawSql(s string) error {
 }
 
 func (t *TagObjReieve) ParseObj(mapInput map[string]interface{}) error {
-	if len(mapInput) < 1 {
-		return errors.New("json对象错误")
-	}
 	for strTableNameJson, interIn := range mapInput {
 		mapInput, bMap := interIn.(map[string]interface{})
 		if !bMap {

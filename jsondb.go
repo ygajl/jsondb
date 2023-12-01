@@ -1,6 +1,7 @@
 package jsondb
 
 import (
+	"github.com/gin-gonic/gin"
 	"github.com/ygajl/jsondb/action"
 	"github.com/ygajl/jsondb/db"
 )
@@ -17,7 +18,7 @@ func Connect(strDsn string) error {
 	return db.Connect(strDsn)
 }
 
-func ParserJson(opt string, mapInput map[string]interface{}) (mapOut map[string]interface{}, err error) {
+func ParserJson(opt string, c *gin.Context) (mapOut map[string]interface{}, err error) {
 	var parser Parser
 	defer func() {
 		var mapRet map[string]interface{}
@@ -32,6 +33,11 @@ func ParserJson(opt string, mapInput map[string]interface{}) (mapOut map[string]
 		}
 		mapOut = mapRet
 	}()
+
+	mapInput := make(map[string]interface{})
+	if err := c.BindJSON(&mapInput); err != nil {
+		return map[string]interface{}{}, err
+	}
 
 	parser = getParser(opt, mapInput)
 	if parser == nil {

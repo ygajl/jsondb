@@ -2,7 +2,6 @@ package action
 
 import (
 	"errors"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -21,22 +20,25 @@ func IsArray(mapInput map[string]interface{}) bool {
 }
 
 type TagArray struct {
-	wCount int16
-	wPage  int16
-	wTotal int16
-	tObj   TagObjReieve
+	wCount     int16
+	wPage      int16
+	wTotal     int16
+	tObj       TagObjReieve
+	bJoin      bool
+	strPrimary string
 
 	strTableNameJson string
+	strJoin          string
 	strWhere         string
 	strOrder         string
 	mapObj           map[string]TagObjReieve
-	strJoin          string
 
 	mapRet map[string]interface{}
 }
 
 func NewArray() TagArray {
 	var tArray TagArray
+	tArray.bJoin = false
 	tArray.mapObj = make(map[string]TagObjReieve)
 	tArray.mapRet = make(map[string]interface{})
 	return tArray
@@ -55,12 +57,12 @@ func (t *TagArray) ParseObj(mapInput map[string]interface{}) error {
 	t.wTotal = -1
 	for strKey, interValue := range mapInput {
 		_itnerValue, bMap := interValue.(map[string]interface{})
+
 		if !bMap {
 			return errors.New(strKey + "对象错误!")
 		}
+
 		t.strTableNameJson = strKey
-		n := strings.Index(strKey, KEY_ARRAY)
-		strKeyReal := string([]byte(strKey)[0:n])
 
 		for strKeyObj, interValueObj := range _itnerValue {
 			if strKeyObj == KEY_COUNT {
@@ -68,83 +70,56 @@ func (t *TagArray) ParseObj(mapInput map[string]interface{}) error {
 				if !err {
 					return errors.New("count值错误")
 				}
+
 				t.wCount = int16(_itnerValue)
 			} else if strKeyObj == KEY_PAGE {
 				_itnerValue, err := interValueObj.(float64)
 				if !err {
 					return errors.New("page值错误")
 				}
+
 				t.wPage = int16(_itnerValue)
-			} else if strKeyObj == KEY_JOIN {
-				_itnerValue, err := interValueObj.(string)
-				if !err {
-					return errors.New("join值错误")
-				}
-				t.strJoin = string(_itnerValue)
 			} else if strKeyObj == KEY_TOTAL {
 				t.wTotal = 0
-			} else if strKeyObj == strKeyReal || strKey == KEY_ARRAY {
-				tObj := NewObj()
-				mapObj := make(map[string]interface{})
-				mapObj[strKeyObj] = interValueObj
-				if err := tObj.ParseObj(mapObj); err == nil {
-					t.tObj = tObj
-				} else {
-					return err
-				}
 			} else {
 				tObj := NewObj()
 				mapObj := make(map[string]interface{})
 				mapObj[strKeyObj] = interValueObj
+
 				if err := tObj.ParseObj(mapObj); err == nil {
-					t.mapObj[strKeyObj] = tObj
+					if tObj.bForeign == false {
+						if t.tObj.strTableNameSql != "" {
+							return errors.New("存在两个主对象")
+						}
+						t.tObj = tObj
+					} else {
+						t.mapObj[strKeyObj] = tObj
+						t.bJoin = true
+					}
 				} else {
 					return err
 				}
 			}
-		}
-
-		if strKey == KEY_ARRAY && len(t.mapObj) > 0 {
-			return errors.New("[]存在多个对象")
 		}
 	}
 	return nil
 }
 
 func (t *TagArray) GenerateRawSql() (string, error) {
-	if t.strJoin != "" {
-		arrJ := strings.Split(t.strJoin, ",")
-		if len(arrJ) <= 0 {
-			return "", errors.New("join值错误")
+	strSelect := t.tObj.strColumnsSql
+	t.strOrder = t.tObj.strOrder
+	for strKey, tObjValue := range t.mapObj {
+		_ = strKey
+		if strSelect != "" {
+			strSelect += ","
 		}
-		compile := regexp.MustCompile(`([&><|!])?/(.+)/(.+)@`)
-		submatch := compile.FindAllSubmatch([]byte(arrJ[0]), -1)
-		strTable1 := string(submatch[0][2])
-		strKey1 := string(submatch[0][3])
-
-		table1, _ := TMgrTable.getTableNameSqlbyJson(strTable1)
-		colName1, _ := TMgrTable.getColSqlbyJson(strTable1, strKey1)
-
-		submatch2 := compile.FindAllSubmatch([]byte(arrJ[1]), -1)
-		strTable2 := string(submatch2[0][2])
-		strKey2 := string(submatch2[0][3])
-		table2, _ := TMgrTable.getTableNameSqlbyJson(strTable2)
-		colName2, _ := TMgrTable.getColSqlbyJson(strTable2, strKey2)
-		t.strWhere += ` join ` + table2 + ` on ` + table1 + `.` + colName1 + `=` + table2 + `.` + colName2
-
-		//
-		for strKey, tObjValue := range t.mapObj {
-			_ = strKey
-			if t.tObj.strColumnsSql != "" {
-				t.tObj.strColumnsSql += ","
-			}
-			t.tObj.strColumnsSql += tObjValue.strColumnsSql
-		}
+		strSelect += tObjValue.strColumnsSql
+		t.strJoin += tObjValue.strJoin
+		t.strOrder = tObjValue.strOrder
 	}
 
 	t.strWhere += " " + t.tObj.strWhere
-	t.strOrder = t.tObj.strOrder
-	strSql := "select " + t.tObj.strColumnsSql + " from " + t.tObj.strTableNameSql + t.strWhere + t.strOrder
+	strSql := "select " + strSelect + " from " + t.tObj.strTableNameSql + t.strJoin + t.strWhere + t.strOrder
 
 	if t.wCount != 0 {
 		if t.wPage != 0 {
@@ -173,7 +148,7 @@ func (t *TagArray) ExecRawSql(s string) error {
 		}
 	}
 
-	if t.strJoin != "" {
+	if t.bJoin {
 		for _, objValue := range t.mapObj {
 			_sliRet := make([]interface{}, len(objValue.sliColumnsJson))
 			lst := TMgrTable.mapJson2Data[objValue.strTableNameJson].lstColInfo
@@ -207,7 +182,7 @@ func (t *TagArray) ExecRawSql(s string) error {
 			}
 			mapObj[t.tObj.strTableNameJson] = mapRetObj
 		}
-		if t.strJoin != "" {
+		if t.bJoin {
 			for _, objValue := range t.mapObj {
 				mapRetObj := make(map[string]interface{})
 				for j := 0; j < len(objValue.sliColumnsJson); j++ {

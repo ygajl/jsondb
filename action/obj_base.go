@@ -2,6 +2,7 @@ package action
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/ygajl/jsondb/public"
@@ -13,11 +14,15 @@ type tagObjBase struct {
 	sliColumnsJson   []string
 	strTableNameSql  string
 	strColumnsSql    string
+	bForeign         bool
 
 	// where
 	strWhere   string
 	mapWhere   map[string]string
 	sliCombine []string
+
+	// join
+	strJoin string
 
 	// result
 	mapRet map[string]interface{}
@@ -25,6 +30,7 @@ type tagObjBase struct {
 
 func NewObjBase() tagObjBase {
 	var tObjBase tagObjBase
+	tObjBase.bForeign = false
 	tObjBase.mapRet = make(map[string]interface{})
 	return tObjBase
 }
@@ -92,6 +98,14 @@ func (t *tagObjBase) parseWhere(mapInput map[string]interface{}) error {
 				return errors.New("combine值错误")
 			}
 		} else if b := strings.HasSuffix(strKey, KEY_CONTION); b {
+			if err := t.getConditionQL(strKey, interValue); err != nil {
+				return err
+			}
+		} else if b := strings.HasSuffix(strKey, KEY_FOREIGN); b {
+			t.bForeign = true
+			if err := t.getJoinSQL(strKey, interValue); err != nil {
+				return err
+			}
 		} else if b := strings.HasSuffix(strKey, KEY_LIKE); b {
 			if err := t.getLikeStringSQL(strKey, interValue); err != nil {
 				return err
@@ -146,6 +160,98 @@ func (t *tagObjBase) getDefaultWhereSQL(strkey string, interValue interface{}) e
 	if strColSql, err := TMgrTable.getColSqlbyJson(t.strTableNameJson, strkey); err == nil {
 		strRet := t.strTableNameSql + `.` + strColSql + "=" + public.I2S(interValue)
 		t.mapWhere[strkey] = strRet
+	} else {
+		return err
+	}
+
+	return nil
+}
+
+func (t *tagObjBase) getConditionQL(strKey string, interValue interface{}) error {
+	n := strings.Index(strKey, KEY_CONTION)
+	if n < 0 {
+		return nil
+	}
+	compile := regexp.MustCompile(`([^&|!]+)([&|!]?)` + KEY_CONTION)
+	submatch := compile.FindAllSubmatch([]byte(strKey), -1)
+
+	if len(submatch) <= 0 {
+		return errors.New("join值错误:{}")
+	}
+
+	strColNameJson := string(submatch[0][1])
+	strUnion := string(submatch[0][2])
+
+	if strColSql, err := TMgrTable.getColSqlbyJson(t.strTableNameJson, strColNameJson); err == nil {
+		_ = strColSql
+		if strCondition, ok := interValue.(string); ok {
+			arrJ := strings.Split(strCondition, ",")
+			for key, value := range arrJ {
+				if key != 0 {
+					if strUnion == "" || strUnion == "|" {
+						t.mapWhere[strKey] += "or"
+					} else if strUnion == "&" {
+						t.mapWhere[strKey] += "and"
+					}
+				}
+				compile := regexp.MustCompile(`(<=|>=|<|>)(.*)`)
+				submatch := compile.FindAllSubmatch([]byte(value), -1)
+				if len(submatch) > 0 {
+					oper := string(submatch[0][1])
+					strValue := string(submatch[0][2])
+					t.mapWhere[strKey] = t.mapWhere[strKey] + t.strTableNameSql + `.` + strColSql + oper + public.I2S(strValue)
+				}
+			}
+		} else if arrValue, ok := interValue.([]interface{}); ok {
+			strRange := ""
+			oper := ""
+			for key, value := range arrValue {
+				if key != 0 {
+					strRange += ","
+				}
+				strRange += public.I2S(value)
+			}
+
+			if strUnion == "!" {
+				oper = " not in "
+			} else {
+				oper = " in "
+			}
+
+			t.mapWhere[strKey] = t.strTableNameSql + `.` + strColSql + oper + "(" + strRange + ")"
+		}
+	} else {
+		return err
+	}
+
+	return nil
+}
+
+func (t *tagObjBase) getJoinSQL(strKey string, interValue interface{}) error {
+	n := strings.Index(strKey, KEY_FOREIGN)
+	if n < 0 {
+		return nil
+	}
+	strColNameJson := string([]byte(strKey)[0:n])
+	if strColSql, err := TMgrTable.getColSqlbyJson(t.strTableNameJson, strColNameJson); err == nil {
+		if strJoin, ok := interValue.(string); ok {
+			strJoin = strings.Replace(strJoin, " ", "", -1)
+			arrJ := strings.Split(strJoin, ",")
+			if len(arrJ) <= 0 {
+				return errors.New("join值错误")
+			}
+			compile := regexp.MustCompile(`/(.+)/(.+)`)
+			submatch := compile.FindAllSubmatch([]byte(arrJ[0]), -1)
+			strTable1 := string(submatch[0][1])
+			strKey1 := string(submatch[0][2])
+
+			table1, _ := TMgrTable.getTableNameSqlbyJson(strTable1)
+			colName1, _ := TMgrTable.getColSqlbyJson(strTable1, strKey1)
+
+			t.strJoin += ` join ` + t.strTableNameSql + ` on ` + table1 + `.` + colName1 + `=` + t.strTableNameSql + `.` + strColSql
+		} else {
+			return errors.New("join值错误")
+		}
 	} else {
 		return err
 	}
