@@ -32,6 +32,7 @@ type TagArray struct {
 	strWhere         string
 	strOrder         string
 	mapObj           map[string]TagObjReieve
+	mapObjOrder      []string
 
 	mapRet map[string]interface{}
 }
@@ -102,20 +103,26 @@ func (t *TagArray) ParseObj(mapInput map[string]interface{}) error {
 			}
 		}
 	}
+
+	for name := range t.mapObj {
+		t.mapObjOrder = append(t.mapObjOrder, name)
+	}
+
 	return nil
 }
 
 func (t *TagArray) GenerateRawSql() (string, error) {
 	strSelect := t.tObj.strColumnsSql
 	t.strOrder = t.tObj.strOrder
-	for strKey, tObjValue := range t.mapObj {
-		_ = strKey
+
+	for _, name := range t.mapObjOrder {
+		objValue := t.mapObj[name]
 		if strSelect != "" {
 			strSelect += ","
 		}
-		strSelect += tObjValue.strColumnsSql
-		t.strJoin += tObjValue.strJoin
-		t.strOrder = tObjValue.strOrder
+		strSelect += objValue.strColumnsSql
+		t.strJoin += objValue.strJoin
+		t.strOrder += objValue.strOrder
 	}
 
 	t.strWhere += " " + t.tObj.strWhere
@@ -149,7 +156,8 @@ func (t *TagArray) ExecRawSql(s string) error {
 	}
 
 	if t.bJoin {
-		for _, objValue := range t.mapObj {
+		for _, name := range t.mapObjOrder {
+			objValue := t.mapObj[name]
 			_sliRet := make([]interface{}, len(objValue.sliColumnsJson))
 			lst := TMgrTable.mapJson2Data[objValue.strTableNameJson].lstColInfo
 			for i := 0; i < len(objValue.sliColumnsJson); i++ {
@@ -183,7 +191,8 @@ func (t *TagArray) ExecRawSql(s string) error {
 			mapObj[t.tObj.strTableNameJson] = mapRetObj
 		}
 		if t.bJoin {
-			for _, objValue := range t.mapObj {
+			for _, name := range t.mapObjOrder {
+				objValue := t.mapObj[name]
 				mapRetObj := make(map[string]interface{})
 				for j := 0; j < len(objValue.sliColumnsJson); j++ {
 					mapRetObj[objValue.sliColumnsJson[j]] = sliOut[i].([]interface{})[n]
